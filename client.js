@@ -17,9 +17,9 @@
 
 
 const APP_KEY   = 'YOUR_TRELLO_APP_KEY';     // e.g. '2f1a...'
-const APP_NAME  = 'Your Power-Up Name';      // shown during auth consent
+const APP_NAME  = 'Pacers JSON Importer';      // shown during auth consent
 // optional but harmless:
-const APP_AUTHOR = 'Your Studio';
+const APP_AUTHOR = 'Pacen Tools';
 
 // --- tiny logger overlay (safe in prod; remove if you like) ---
 const log = (...args) => {
