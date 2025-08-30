@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Authorize Power-Up</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }
+    button { padding: 10px 14px; border: none; border-radius: 8px; cursor: pointer; }
+    #go { background: #0079bf; color: #fff; }
+    #msg { margin-top: 10px; color: #555; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h2>Authorize this Power-Up</h2>
+  <p>Click the button below to let this Power-Up act on your behalf (read & write) to create boards, lists, cards, and more.</p>
+  <button id="go">Authorize</button>
+  <div id="msg"></div>
+
+  <!-- Trello Power-Up client library -->
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script>
+    // === EDIT THIS to your real Trello app key (same as in client.js) ===
+    const APP_KEY   = 'YOUR_TRELLO_APP_KEY';
+    const APP_NAME  = 'Your Power-Up Name';
+    const APP_AUTHOR= 'Your Studio';
+
+    const t = window.TrelloPowerUp.iframe({
+      appKey: APP_KEY,
+      appName: APP_NAME,
+      appAuthor: APP_AUTHOR
+    });
+
+    const msg = (m)=>{ document.getElementById('msg').textContent = m; };
+
+    t.render(function () {
+      document.getElementById('go').addEventListener('click', async function () {
+        try {
+          msg('Opening Trello authorization…');
+          await t.getRestApi().authorize({
+            scope: 'read,write',   // request only what you need
+            expiration: 'never'    // or '30days', '1day', '1hour'
+          });
+          msg('Authorized! You can close this window.');
+          // Close popup and return to the importer
+          await t.closePopup();
+        } catch (err) {
+          if (err && err.name === 'AuthDeniedError') {
+            msg('Authorization was cancelled. You can try again.');
+          } else {
+            msg('Authorization failed: ' + (err && err.message ? err.message : err));
+          }
+        }
+      }, false);
+    });
+  </script>
+</body>
+</html>
