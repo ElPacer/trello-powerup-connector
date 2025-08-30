@@ -1,27 +1,21 @@
-/* global TrelloPowerUp */
-
-/**
- * ================================
- *  Power-Up: client.js (FULL)
- *  - Registers capabilities
- *  - Handles auth popups
- *  - Opens the JSON Importer UI
- * ================================
+/*
+ * Copyright (c) 2025 Pacen Life Games. All rights reserved.
  *
- * Files expected (same origin):
- *   - index.html       (root connector)
- *   - client.js        (this file)
- *   - importer.html    (your JSON importer UI)
- *   - authorize.html   (contains the button that calls t.getRestApi().authorize)
+ * This software and associated documentation files (the "Software") are the 
+ * confidential and proprietary information of Pacen Life Games ("Company"). 
+ * You shall not disclose or distribute the Software in whole or in part 
+ * without the prior written permission of the Company.
  *
- * IMPORTANT:
- *   1) Replace APP_KEY and APP_NAME below.
- *   2) Add your origin (e.g. https://YOUR-USERNAME.github.io) to
- *      Trello Power-Up Admin -> API Key -> Allowed origins.
- *   3) Keep authorize() calls inside a popup + user click to avoid popup blockers.
+ * The Software is provided "AS IS", without warranty of any kind, express or 
+ * implied, including but not limited to the warranties of merchantability, 
+ * fitness for a particular purpose, and noninfringement. In no event shall 
+ * the Company or its contributors be liable for any claim, damages, or other 
+ * liability, whether in an action of contract, tort, or otherwise, arising 
+ * from, out of, or in connection with the Software or the use or other 
+ * dealings in the Software.
  */
 
-// === 1) EDIT THESE TWO VALUES ===
+
 const APP_KEY   = 'YOUR_TRELLO_APP_KEY';     // e.g. '2f1a...'
 const APP_NAME  = 'Your Power-Up Name';      // shown during auth consent
 // optional but harmless:
