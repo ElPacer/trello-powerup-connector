@@ -6,10 +6,10 @@ const t = window.TrelloPowerUp.iframe();
 window.TrelloPowerUp.initialize({
   'board-buttons': function () {
     return [{
-     // icon: 'https://raw.githubusercontent.com/github/explore/main/topics/trello/trello.png',
-      text: 'Hello from Power-Up',
+      icon: 'https://elpacer.github.io/trello-powerup-connector/PLG250.png',
+      text: 'Hello from pacen json importer',
       callback: function (t) {
-        return t.alert({ message: 'It works! ✅', duration: 4 });
+        return t.alert({ message: 'Click, Click - Checked! ✅', duration: 4 });
       }
     }];
   }
