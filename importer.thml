@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Trello JSON Importer</title>
+</head>
+<body>
+  <h2>Import Trello Board from JSON</h2>
+
+  <!-- Trello client library -->
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+
+  <!-- UI -->
+  <p>1) Click the button to authorize (if prompted)</p>
+  <button id="authorize">Authorize</button>
+
+  <p>2) Choose your JSON file</p>
+  <input type="file" id="file" accept=".json" />
+
+  <p>3) Click to import</p>
+  <button id="import">Import</button>
+
+  <pre id="log" style="background:#111;color:#0f0;padding:8px;max-height:280px;overflow:auto"></pre>
+
+  <script src="./importer.js"></script>
+</body>
+</html>
