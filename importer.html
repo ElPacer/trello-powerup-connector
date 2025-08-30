@@ -1,27 +1,211 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>Trello JSON Importer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }
+    .row { margin: 10px 0; }
+    button { padding: 10px 14px; border: none; border-radius: 8px; cursor: pointer; }
+    #auth { background: #0079bf; color: #fff; }
+    #import { background: #5aac44; color: #fff; }
+    #log { background:#0b0b0b; color:#b7ffb7; padding:10px; border-radius:8px; max-height:260px; overflow:auto; white-space:pre-wrap; }
+    input[type="file"] { padding: 6px; }
+    .muted { color:#666; font-size: 13px; }
+  </style>
 </head>
 <body>
   <h2>Import Trello Board from JSON</h2>
+  <div class="row">
+    <button id="auth">Authorize (one-time)</button>
+    <span id="authStatus" class="muted">Not checked yet</span>
+  </div>
+  <div class="row">
+    <input type="file" id="file" accept=".json" />
+  </div>
+  <div class="row">
+    <button id="import">Import</button>
+  </div>
+  <div class="row">
+    <div id="log" aria-live="polite"></div>
+  </div>
+  <p class="muted">JSON schema: {"name": "...", "labels":[{name,color}], "lists":[{name,"cards":[{name,desc?,labels?,checklists?[{name,items[]}] }]}]}</p>
 
-  <!-- Trello client library -->
+  <!-- Trello Power-Up client library -->
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <script>
+    // === EDIT THIS to your real Trello app key (same as in client.js) ===
+    const APP_KEY   = 'YOUR_TRELLO_APP_KEY';
+    const APP_NAME  = 'Your Power-Up Name';
+    const APP_AUTHOR= 'Your Studio';
 
-  <!-- UI -->
-  <p>1) Click the button to authorize (if prompted)</p>
-  <button id="authorize">Authorize</button>
+    const t = window.TrelloPowerUp.iframe({
+      appKey: APP_KEY,
+      appName: APP_NAME,
+      appAuthor: APP_AUTHOR
+    });
 
-  <p>2) Choose your JSON file</p>
-  <input type="file" id="file" accept=".json" />
+    const logEl = document.getElementById('log');
+    const authStatusEl = document.getElementById('authStatus');
+    function log(s){ logEl.textContent += s + '\n'; logEl.scrollTop = logEl.scrollHeight; }
+    const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 
-  <p>3) Click to import</p>
-  <button id="import">Import</button>
+    // helpers to call Trello REST with stored token
+    async function api(path, method='GET', body=null) {
+      const client = await t.getRestApi();
+      const token = await client.getToken();
+      if(!token) throw new Error('Not authorized yet.');
+      const url = new URL('https://api.trello.com/1' + path);
+      url.searchParams.set('key', APP_KEY);
+      url.searchParams.set('token', token);
+      return fetch(url.toString(), { method, body })
+        .then(async res => {
+          if(!res.ok){
+            const txt = await res.text().catch(()=> '');
+            throw new Error(`HTTP ${res.status} ${res.statusText} – ${txt}`);
+          }
+          return res.json();
+        });
+    }
 
-  <pre id="log" style="background:#111;color:#0f0;padding:8px;max-height:280px;overflow:auto"></pre>
+    // REST helpers (use FormData for POSTs)
+    async function createBoard(name) {
+      const fd = new FormData();
+      return api(`/boards/?name=${encodeURIComponent(name)}`, 'POST', fd); // returns full board
+    }
+    async function createLabel(boardId, name, color) {
+      const allowed = new Set(['green','yellow','orange','red','purple','blue','sky','lime','pink','black']);
+      const clr = (color||'').toLowerCase();
+      const use = allowed.has(clr) ? clr : 'blue';
+      const fd = new FormData();
+      return api(`/labels?name=${encodeURIComponent(name||'')}&color=${use}&idBoard=${boardId}`, 'POST', fd); // returns label
+    }
+    async function createList(boardId, name) {
+      const fd = new FormData();
+      const res = await api(`/lists?name=${encodeURIComponent(name)}&idBoard=${boardId}`, 'POST', fd);
+      return res.id;
+    }
+    async function createCard(listId, name, desc) {
+      const fd = new FormData();
+      const res = await api(`/cards?idList=${listId}&name=${encodeURIComponent(name)}&desc=${encodeURIComponent(desc||'')}`, 'POST', fd);
+      return res.id;
+    }
+    async function addLabelToCard(cardId, labelId) {
+      const fd = new FormData();
+      return api(`/cards/${cardId}/idLabels?value=${labelId}`, 'POST', fd);
+    }
+    async function createChecklist(cardId, name) {
+      const fd = new FormData();
+      const res = await api(`/checklists?idCard=${cardId}&name=${encodeURIComponent(name||'Checklist')}`, 'POST', fd);
+      return res.id;
+    }
+    async function addChecklistItem(checklistId, name) {
+      const fd = new FormData();
+      return api(`/checklists/${checklistId}/checkItems?name=${encodeURIComponent(name)}`, 'POST', fd);
+    }
 
-  <script src="./importer.js"></script>
+    async function checkAuthStatus(){
+      const client = await t.getRestApi();
+      const ok = await client.isAuthorized();
+      authStatusEl.textContent = ok ? 'Authorized ✅' : 'Not authorized ❌';
+      return ok;
+    }
+
+    // wire buttons
+    document.getElementById('auth').addEventListener('click', async () => {
+      // open our dedicated authorize popup (user will click the button inside it)
+      await t.popup({ title: 'Authorize to Continue', url: './authorize.html', height: 360 });
+      await checkAuthStatus();
+    });
+
+    document.getElementById('import').addEventListener('click', async () => {
+      try {
+        log('Starting import…');
+        const ok = await checkAuthStatus();
+        if(!ok){ alert('Please authorize first.'); return; }
+
+        const file = document.getElementById('file').files[0];
+        if(!file){ alert('Choose a .json file first.'); return; }
+
+        // read & parse file
+        const text = await file.text();
+        let data;
+        try { data = JSON.parse(text); }
+        catch(parseErr){ throw new Error('Invalid JSON: ' + parseErr.message); }
+
+        // validate schema basics
+        if(!data || !data.name || !Array.isArray(data.lists))
+          throw new Error('JSON missing required fields: name, lists[]');
+
+        // 1) create board
+        const board = await createBoard(data.name);
+        log(`Board created: ${board.name} (${board.id})`);
+        await sleep(50);
+
+        // 2) create labels and map by lowercased name
+        const labelIdByName = {};
+        if (Array.isArray(data.labels)) {
+          for (const L of data.labels) {
+            const res = await createLabel(board.id, L.name||'', L.color||'blue');
+            labelIdByName[(L.name||'').toLowerCase()] = res.id;
+            log(` Label: ${L.name||''} (${res.id})`);
+            await sleep(50);
+          }
+        }
+
+        // 3) create lists in order
+        for (const list of data.lists) {
+          const listId = await createList(board.id, list.name);
+          log(` List: ${list.name} (${listId})`);
+          await sleep(60);
+
+          // 4) create cards in order
+          for (const card of (list.cards||[])) {
+            const cardId = await createCard(listId, card.name, card.desc||'');
+            log(`   Card: ${card.name} (${cardId})`);
+            await sleep(60);
+
+            // 4a) labels by name
+            if (Array.isArray(card.labels)) {
+              for (const lname of card.labels) {
+                const idLabel = labelIdByName[(lname||'').toLowerCase()];
+                if (idLabel) {
+                  await addLabelToCard(cardId, idLabel);
+                  log(`     + Label: ${lname}`);
+                  await sleep(50);
+                }
+              }
+            }
+
+            // 4b) checklists + items
+            if (Array.isArray(card.checklists)) {
+              for (const cl of card.checklists) {
+                const checklistId = await createChecklist(cardId, cl.name||'Checklist');
+                log(`     + Checklist: ${cl.name||'Checklist'} (${checklistId})`);
+                await sleep(50);
+                for (const item of (cl.items||[])) {
+                  await addChecklistItem(checklistId, item);
+                  log(`       - ${item}`);
+                  await sleep(40);
+                }
+              }
+            }
+          }
+        }
+
+        log('✅ Import complete! Refresh your Trello board to see everything.');
+        alert('Import complete!');
+
+      } catch (err) {
+        console.error(err);
+        log('❌ ERROR: ' + (err && err.message ? err.message : err));
+        alert('Import failed. See the log for details.');
+      }
+    });
+
+    // initial auth check on render
+    t.render(() => { checkAuthStatus(); });
+  </script>
 </body>
 </html>
