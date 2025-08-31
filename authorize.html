@@ -19,58 +19,79 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Authorize Power-Up</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }
-    button { padding: 10px 14px; border: none; border-radius: 8px; cursor: pointer; }
-    #go { background: #0079bf; color: #fff; }
-    #msg { margin-top: 10px; color: #555; font-size: 14px; }
-  </style>
+<meta charset="utf-8" />
+<title>Authorize Power-Up</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; frame-ancestors https://trello.com; script-src 'self' https://p.trellocdn.com; connect-src https://api.trello.com https://YOUR-BACKEND-DOMAIN.com; style-src 'self' 'unsafe-inline'">
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}button{padding:10px 14px;border:0;border-radius:8px;cursor:pointer}#auth{background:#0079bf;color:#fff}#buy{background:#6e5dc6;color:#fff;margin-left:8px}#note{margin-top:10px;color:#555}</style>
 </head>
 <body>
-  <h2>Authorize this Power-Up</h2>
-  <p>Click the button below to let this Power-Up act on your behalf (read & write) to create boards, lists, cards, and more.</p>
-  <button id="go">Authorize</button>
-  <div id="msg"></div>
+<h2>Authorize this Power-Up</h2>
+<p id="status">Checking license…</p>
+<div>
+  <button id="auth" disabled>Authorize</button>
+  <button id="buy">Subscribe / Buy License</button>
+</div>
+<p id="note"></p>
 
-  <!-- Trello Power-Up client library -->
-  <script src="https://p.trellocdn.com/power-up.min.js"></script>
-  <script>
-    // === EDIT THIS to your real Trello app key (same as in client.js) ===
-    const APP_KEY   = '23264f266db9bdcb44de1633cef89d0b';
-    const APP_NAME  = 'Pacers Trello JSON importer v0.1';
-    const APP_AUTHOR= 'Pacen Life';
+<script src="https://p.trellocdn.com/power-up.min.js"></script>
+<script>
+'use strict';
+const APP_KEY='YOUR_TRELLO_APP_KEY', APP_NAME='YOUR POWER-UP NAME', APP_AUTHOR='YOUR STUDIO NAME';
+const API_BASE='https://YOUR-BACKEND-DOMAIN.com';
+const LIC_STATUS='/api/license/status';       // GET ?orgId=&boardId=
+const CLAIM_BOARD='/api/license/claim-board'; // POST {orgId, boardId}
 
-    const t = window.TrelloPowerUp.iframe({
-      appKey: APP_KEY,
-      appName: APP_NAME,
-      appAuthor: APP_AUTHOR
-    });
+const t = window.TrelloPowerUp.iframe({ appKey: APP_KEY, appName: APP_NAME, appAuthor: APP_AUTHOR });
+const $ = (id)=>document.getElementById(id);
+const ctx = async()=>{ const c=await t.getContext(); return { orgId:c.organization, boardId:c.board, memberId:c.member }; };
+const jwt = (state)=>t.jwt({ state: JSON.stringify(state||{}) });
 
-    const msg = (m)=>{ document.getElementById('msg').textContent = m; };
+async function licenseStatus(orgId, boardId){
+  const token = await jwt({orgId, boardId});
+  const res = await fetch(`${API_BASE}${LIC_STATUS}?orgId=${encodeURIComponent(orgId)}&boardId=${encodeURIComponent(boardId)}`, { headers:{'X-Trello-JWT': token }});
+  if(!res.ok) throw new Error('License check failed');
+  return res.json(); // {active, plan, claimedBoards?, remaining?}
+}
+async function claimBoard(orgId, boardId){
+  const token = await jwt({orgId, boardId});
+  const res = await fetch(`${API_BASE}${CLAIM_BOARD}`, { method:'POST', headers:{'Content-Type':'application/json','X-Trello-JWT': token}, body: JSON.stringify({orgId, boardId}) });
+  if(!res.ok) throw new Error('Claim failed');
+  return res.json();
+}
 
-    t.render(function () {
-      document.getElementById('go').addEventListener('click', async function () {
-        try {
-          msg('Opening Trello authorization…');
-          await t.getRestApi().authorize({
-            scope: 'read,write',   // request only what you need
-            expiration: 'never'    // or '30days', '1day', '1hour'
-          });
-          msg('Authorized! You can close this window.');
-          // Close popup and return to the importer
-          await t.closePopup();
-        } catch (err) {
-          if (err && err.name === 'AuthDeniedError') {
-            msg('Authorization was cancelled. You can try again.');
-          } else {
-            msg('Authorization failed: ' + (err && err.message ? err.message : err));
-          }
-        }
-      }, false);
-    });
-  </script>
+t.render(async ()=>{
+  const { orgId, boardId } = await ctx();
+  if(!orgId){ $('status').textContent='Open this on a board inside a Workspace.'; return; }
+
+  try{
+    const lic = await licenseStatus(orgId, boardId);
+    if(!lic.active){
+      $('status').textContent = 'No active license for this Workspace.';
+      $('note').textContent   = 'Purchase a Single-Board Pass (one-time) or All-Boards Pro (monthly), then return to authorize.';
+      $('buy').onclick = ()=> t.popup({ title:'License & Billing', url:'./billing.html', height:600 });
+      return;
+    }
+    // If single plan and this board not yet claimed, claim now (binds license to this board).
+    if(lic.plan === 'single' && !(lic.claimedBoards||[]).includes(boardId)){
+      $('status').textContent = 'Binding your Single-Board Pass to this board…';
+      await claimBoard(orgId, boardId);
+    }
+    $('status').textContent = 'License OK. You can authorize now.';
+    $('auth').disabled = false;
+    $('auth').onclick = async ()=>{
+      try{
+        await t.getRestApi().authorize({ scope:'read,write', expiration:'30days' });
+        // OPTIONAL: identify the user (username) post-auth
+        // const me = await fetch(`https://api.trello.com/1/members/me?key=${APP_KEY}&token=${await (await t.getRestApi()).getToken()}`).then(r=>r.json());
+        await t.closePopup();
+      }catch(e){ alert('Authorization cancelled or failed.'); }
+    };
+    $('buy').onclick = ()=> t.popup({ title:'License & Billing', url:'./billing.html', height:600 });
+  }catch(e){
+    $('status').textContent = 'Error checking license. Try again.';
+  }
+});
+</script>
 </body>
 </html>
