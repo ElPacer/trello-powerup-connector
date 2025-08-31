@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>License & Billing</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; frame-ancestors https://trello.com; script-src 'self' https://p.trellocdn.com; connect-src https://YOUR-BACKEND-DOMAIN.com; style-src 'self' 'unsafe-inline'">
+<style>
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+  .card{border:1px solid #ddd;border-radius:10px;padding:14px;margin:10px 0}
+  .title{font-weight:700} .price{font-size:18px;margin:8px 0}
+  button{padding:10px 14px;border:0;border-radius:8px;cursor:pointer;background:#6e5dc6;color:#fff}
+  #status{margin:10px 0;color:#555}
+</style>
+</head>
+<body>
+<h2>License & Billing</h2>
+<div id="status">Checking license…</div>
+
+<div class="card">
+  <div class="title">Single-Board Pass</div>
+  <div>Use the importer on <b>one board</b> in this Workspace (one-time purchase).</div>
+  <div class="price">YOUR_CURRENCY YOUR_PRICE (one-time)</div>
+  <button id="buy-single">Buy Single-Board Pass</button>
+</div>
+
+<div class="card">
+  <div class="title">All-Boards Pro</div>
+  <div>Use the importer on <b>every board</b> in this Workspace (monthly).</div>
+  <div class="price">YOUR_CURRENCY YOUR_PRICE / month</div>
+  <button id="buy-pro">Subscribe to All-Boards Pro</button>
+</div>
+
+<script src="https://p.trellocdn.com/power-up.min.js"></script>
+<script>
+'use strict';
+const APP_KEY='23264f266db9bdcb44de1633cef89d0b', APP_NAME='Pacers JSON Importer', APP_AUTHOR='Pacen Life Ltd';
+const API_BASE='https://Test-BACKEND-DOMAIN.com'; //edit to working
+const LIC_STATUS='/api/license/status';                 // GET 
+const CREATE_SESSION='/api/billing/create-checkout-session'; // POST {orgId, plan, returnUrl}
+
+const t = window.TrelloPowerUp.iframe({ appKey: APP_KEY, appName: APP_NAME, appAuthor: APP_AUTHOR });
+const $=(id)=>document.getElementById(id);
+async function ctx(){ const c=await t.getContext(); return { orgId:c.organization, boardId:c.board }; }
+async function trelloJWT(state){ return t.jwt({ state: JSON.stringify(state||{}) }); }
+
+async function status(orgId, boardId){
+  const jwt = await trelloJWT({orgId, boardId});
+  const r = await fetch(`${API_BASE}${LIC_STATUS}?orgId=${encodeURIComponent(orgId)}&boardId=${encodeURIComponent(boardId)}`, { headers:{'X-Trello-JWT': jwt}});
+  return r.ok ? r.json() : null;
+}
+async function checkout(orgId, plan){
+  const jwt = await trelloJWT({orgId, plan});
+  const returnUrl = window.location.origin + '/license-return.html';
+  const r = await fetch(`${API_BASE}${CREATE_SESSION}`, { method:'POST', headers:{'Content-Type':'application/json','X-Trello-JWT': jwt}, body: JSON.stringify({ orgId, plan, returnUrl }) });
+  const j = await r.json();
+  if(j.url) window.top.location.href = j.url; else alert('Could not open checkout.');
+}
+
+t.render(async ()=>{
+  const { orgId, boardId } = await ctx();
+  if(!orgId){ $('status').textContent = 'Open on a board inside a Workspace.'; return; }
+  const lic = await status(orgId, boardId);
+  $('status').textContent = lic?.active ? `Active (${lic.plan||'unknown'}) ✅` : 'Inactive ❌';
+  $('buy-single').onclick = ()=> checkout(orgId, 'single');
+  $('buy-pro').onclick    = ()=> checkout(orgId, 'pro');
+});
+</script>
+</body>
+</html>
