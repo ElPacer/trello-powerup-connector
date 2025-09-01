@@ -16,7 +16,7 @@
  */
 
 
-const APP_KEY   = '23264f266db9bdcb44de1633cef89d0b';     // e.g. '2f1a...'
+const APP_KEY   = '';     // e.g. '2f1a...'
 const APP_NAME  = 'Pacers JSON Importer';      // shown during auth consent
 const APP_AUTHOR = 'Pacen Tools';
 
